@@ -50,6 +50,11 @@ interface GetUserProfileArgs {
   user_id: string;
 }
 
+interface ListDMsArgs {
+  limit?: number;
+  cursor?: string;
+}
+
 // Tool definitions
 const listChannelsTool: Tool = {
   name: "slack_list_channels",
@@ -210,6 +215,25 @@ const getUserProfileTool: Tool = {
   },
 };
 
+const listDMsTool: Tool = {
+  name: "slack_list_dms",
+  description: "List direct message conversations",
+  inputSchema: {
+    type: "object",
+    properties: {
+      limit: {
+        type: "number",
+        description: "Maximum number of DMs to return (default 100, max 200)",
+        default: 100,
+      },
+      cursor: {
+        type: "string",
+        description: "Pagination cursor for next page of results",
+      },
+    },
+  },
+};
+
 class SlackClient {
   private headers: { Authorization: string; "Content-Type": string };
   private isUserToken: boolean;
@@ -349,6 +373,25 @@ class SlackClient {
 
     const response = await fetch(
       `https://slack.com/api/users.profile.get?${params}`,
+      { headers: this.headers },
+    );
+
+    return response.json();
+  }
+
+  async getDMs(limit: number = 100, cursor?: string): Promise<any> {
+    const params = new URLSearchParams({
+      types: "im",
+      exclude_archived: "false",
+      limit: Math.min(limit, 200).toString(),
+    });
+
+    if (cursor) {
+      params.append("cursor", cursor);
+    }
+
+    const response = await fetch(
+      `https://slack.com/api/conversations.list?${params}`,
       { headers: this.headers },
     );
 
@@ -510,6 +553,14 @@ async function main() {
             };
           }
 
+          case "slack_list_dms": {
+            const args = request.params.arguments as unknown as ListDMsArgs;
+            const response = await slackClient.getDMs(args.limit, args.cursor);
+            return {
+              content: [{ type: "text", text: JSON.stringify(response) }],
+            };
+          }
+
           default:
             throw new Error(`Unknown tool: ${request.params.name}`);
         }
@@ -541,6 +592,7 @@ async function main() {
         getThreadRepliesTool,
         getUsersTool,
         getUserProfileTool,
+        listDMsTool,
       ],
     };
   });
